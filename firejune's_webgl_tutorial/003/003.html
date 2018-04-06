@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title></title>
+
+<script type="text/javascript" src="glMatrix-0.9.5.min.js"></script>
+<script type="text/javascript" src="webgl-utils.js"></script>
+<script>
+	var gl;
+ 	function getWebGLContext( canvas = null){
+		var webGLContext;
+		var names = ["webgl", "experimental-webgl", "webkit-3d", "moz-webgl"];
+		for (var i = 0; i < names.length; i++) 
+		{
+			try{
+				webGLContext = canvas.getContext(names[i] );
+				console.log(canvas.getContext(names[i])+","+ names[i]);
+			}catch(e){			}
+			if (webGLContext){
+				console.log(names[i]);
+				break;
+			}
+		}
+		if(!webGLContext){
+			console.log("Could not initialise WebGL.");
+		}
+		webGLContext.viewportWidth = canvas.width;
+		webGLContext.viewportHeight = canvas.height;
+		return webGLContext;
+ 	 }
+ 	var canvas;
+	function webGLStart(){
+		canvas = document.getElementById("lesson03-canvas");
+		
+		gl = getWebGLContext( canvas );
+		console.log(gl);
+		initShaders();
+		initBuffers();
+
+		gl.clearColor(0.0 , 0.0 , 0.0 , 1.0);
+		gl.enable(gl.DEPTH_TEST);
+
+		tick();
+	}
+
+	// 색상 및 위치좌표 버퍼 
+	var triangleVertexPositionBuffer; // 삼각형 버텍스( 정점, 꼭짓점 )
+	var triangleVertexColorBuffer;
+	var squareVertexPositionBuffer; // 사각형 버텍스
+	var squareVertexColorBuffer;
+	
+
+	 function initBuffers() {
+        triangleVertexPositionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, triangleVertexPositionBuffer);
+        var vertices = [
+             0.0,  1.0,  0.0,
+            -1.0, -1.0,  0.0,
+             1.0, -1.0,  0.0
+        ];
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+        triangleVertexPositionBuffer.itemSize = 3;
+        triangleVertexPositionBuffer.numItems = 3;
+
+        triangleVertexColorBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, triangleVertexColorBuffer);
+        var colors = [
+            1.0, 0.0, 0.0, 1.0,
+            0.0, 1.0, 0.0, 1.0,
+            0.0, 0.0, 1.0, 1.0
+        ];
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.STATIC_DRAW);
+        triangleVertexColorBuffer.itemSize = 4;
+        triangleVertexColorBuffer.numItems = 3;
+
+
+        squareVertexPositionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, squareVertexPositionBuffer);
+        vertices = [
+             1.0,  1.0,  0.0,
+            -1.0,  1.0,  0.0,
+             1.0, -1.0,  0.0,
+            -1.0, -1.0,  0.0
+        ];
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+        squareVertexPositionBuffer.itemSize = 3;
+        squareVertexPositionBuffer.numItems = 4;
+
+        squareVertexColorBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, squareVertexColorBuffer);
+        colors = [];
+        for (var i=0; i < 4; i++) {
+            colors = colors.concat([0.5, 0.5, 1.0, 1.0]);
+        }
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.STATIC_DRAW);
+        squareVertexColorBuffer.itemSize = 4;
+        squareVertexColorBuffer.numItems = 4;
+    }
+
+    // 도형의 회전각도
+    var rTri = 0;
+    var rSquare = 0;
+	function drawScene() {
+        gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        mat4.perspective(45, gl.viewportWidth / gl.viewportHeight, 0.1, 100.0, pMatrix);
+        mat4.identity(mvMatrix);
+        mat4.translate(mvMatrix, [-1.5, 0.0, -7.0]);
+
+
+        mvPushMatrix();
+        mat4.rotate(mvMatrix, degToRad(rTri), [0, 1, 0]);
+
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, triangleVertexPositionBuffer);
+        gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, triangleVertexPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, triangleVertexColorBuffer);
+        gl.vertexAttribPointer(shaderProgram.vertexColorAttribute, triangleVertexColorBuffer.itemSize, gl.FLOAT, false, 0, 0);
+
+        setMatrixUniforms();
+        gl.drawArrays(gl.TRIANGLES, 0, triangleVertexPositionBuffer.numItems);
+
+
+        mvPopMatrix();
+
+
+        mat4.translate(mvMatrix, [3.0, 0.0, 0.0]);
+
+        mvPushMatrix();
+        mat4.rotate( mvMatrix, degToRad(rSquare), [ 1,0,0 ] );
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, squareVertexPositionBuffer);
+        gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, squareVertexPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, squareVertexColorBuffer);
+        gl.vertexAttribPointer(shaderProgram.vertexColorAttribute, squareVertexColorBuffer.itemSize, gl.FLOAT, false, 0, 0);
+
+        setMatrixUniforms();
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, squareVertexPositionBuffer.numItems);
+
+        mvPopMatrix();
+    }
+
+
+	function tick(){
+		requestAnimFrame(tick);
+		drawScene();
+		animate();
+	}
+
+	var lastTime = 0;
+	function animate(){
+		var timeNow = new Date().getTime();
+		if(lastTime != 0 ){
+			var elapsed = timeNow - lastTime;
+			rTri += ( 90* elapsed )/ 1000.0;
+			rSquare += ( 75* elapsed )/ 1000.0;
+		}
+		lastTime = timeNow;
+	}
+	
+	var mvMatrix = mat4.create();
+	var mvMatrixStack = [];
+	var pMatrix = mat4.create();
+	// model-view matrix를 유지하기위한 mvMatrix 라는 변수를 정의함.
+	// mat4.create 에 의해 만들어진 매트릭스는 0 으로 비어있는 행렬.
+
+	// mat4.perspective 함수는 projection matrix 를 수행함. 인수로 지정된 투시법을 적용하기에 필요한 특수 매트릭스를 반환하는 함수이다.
+
+	function mvPushMatrix(){
+		var copy = mat4.create();
+		mat4.set(mvMatrix, copy);
+		mvMatrixStack.push(copy);
+	}
+
+	function mvPopMatrix(){
+		if(mvMatrixStack.length == 0){
+			throw "Invalid popMatrix!";
+		}
+		mvMatrix = mvMatrixStack.pop();
+	}
+
+
+	function degToRad(degrees){
+		return degrees * Math.PI / 180;
+	}
+
+
+	var shaderProgram;
+	function initShaders(){
+		var fragmentShader = getShader(gl, "shader-fs");
+		var vertexShader = getShader(gl, "shader-vs");
+
+		shaderProgram = gl.createProgram();
+		gl.attachShader( shaderProgram, vertexShader);
+		gl.attachShader( shaderProgram, fragmentShader);
+		gl.linkProgram( shaderProgram);
+
+		if( !gl.getProgramParameter( shaderProgram, gl.LINK_STATUS )){
+			console.log("Could not initialise shaders");
+		}
+
+		gl.useProgram( shaderProgram);
+
+		shaderProgram.vertexPositionAttribute = gl.getAttribLocation(shaderProgram, "aVertexPosition");
+		gl.enableVertexAttribArray(shaderProgram.vertexPositionAttribute);
+
+		shaderProgram.vertexColorAttribute = gl.getAttribLocation( shaderProgram , "aVertexColor");
+		gl.enableVertexAttribArray( shaderProgram.vertexColorAttribute);
+
+		shaderProgram.pMatrixUniform = gl.getUniformLocation( shaderProgram, "uPMatrix");
+		shaderProgram.mvMatrixUniform = gl.getUniformLocation( shaderProgram, "uMVMatrix");
+		/* 쉐이더로 애트리뷰트값을 전달하고 가져오기 위해 애트리뷰트의 위치를 검색하는것*/ 
+	}
+
+
+	function getShader(gl, id){
+		var shaderScript = document.getElementById(id);
+		if(!shaderScript){
+			return null;
+		}
+
+		var str = "";
+		var k = shaderScript.firstChild;
+		while(k){
+			if(k.nodeType == 3){
+				str += k.textContent;
+			}
+			k = k.nextSibling;
+
+		}
+
+		var shader;
+		if( shaderScript.type == "x-shader/x-fragment" ){
+			shader = gl.createShader(gl.FRAGMENT_SHADER);
+		}else if( shaderScript.type == "x-shader/x-vertex" ){
+			shader = gl.createShader(gl.VERTEX_SHADER);
+		}else{
+			return null;
+		}
+
+		gl.shaderSource(shader, str);
+		gl.compileShader(shader);
+
+		if( !gl.getShaderParameter(shader, gl.COMPILE_STATUS) ){
+			alert( gl.getShaderInfoLog(shader) );
+			return null;
+		}
+
+		return shader;
+	}
+
+	// shader 코드의 내용을 추출해 fragment와 vertex 타입에 따라 webgl 이 그래픽 카드에서 작동하게 컴파일을 걸어놓고 있는것.
+
+
+
+
+	function setMatrixUniforms(){
+		gl.uniformMatrix4fv( shaderProgram.pMatrixUniform, false, pMatrix
+		);
+		gl.uniformMatrix4fv( 
+			shaderProgram.mvMatrixUniform, 
+			false, mvMatrix
+		);
+		
+	}
+
+	// initShader 함수에서 얻은 projection matrix 와 model-view matrix를 나타내는 uniform 변수에 대한 참조를 사용하여 WebGL에 자바스크립트 형식의 매트릭스를 전달합니다.
+
+</script>
+<script id = "shader-vs" type= "x-shader/x-vertex">
+
+	attribute vec3 aVertexPosition;
+	attribute vec4 aVertexColor;
+
+	uniform mat4 uMVMatrix;
+	uniform mat4 uPMatrix;
+
+	varying vec4 vColor;
+
+	void main(void){
+		gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition , 1.0);
+		vColor= aVertexColor;
+	}
+
+	/*
+		aVertexPosition , aVertexColor - 애트리뷰트 ( 각각 위치참조값, 색상참조값 )
+		uMVMatrix , uPMatrix - non-varying uniform 변수 
+		vColor - varying 변수 
+
+		쉐이더 본체에서 gl_Position을 레슨 1에서 처럼 계산한다.
+		( gl_Position 은 모든 vertex shader 에서 암시적으로 varying 형태로써 정의되어 있다. )
+		그리고 색상과 관련된 입력 애트리뷰트 - aVertexColor 를 출력할 varying 변수로 전달한다.
+
+
+
+	*/
+</script>
+
+<script id= "shader-fs" type="x-shader/x-fragment">
+	precision mediump float;
+
+	varying vec4 vColor;
+
+	void main(void){
+		gl_FragColor = vColor;
+	}
+</script>
+<!-- 
+	쉐이더 언어는 c언어의 영향을 강하게 받은 특별한 쉐이더 언어로 작성되어있다.
+
+	첫번째 script 태그는 fragment 쉐이더.
+	그래픽 카드에 float의 정밀도를 지정함 
+	반드시 포함해야 하는 마스크의 일부분이 있다.
+	main 함수는 랜더링 되는 모든 것이 간단하게 흰색으로 렌더링 되도록 지정한다.
+
+	그다음 script 태그는 vertex 쉐이더.
+	vertex 를 사용하여 매우 여러가지 일을 꾸밀수 있게함.
+	여기서 uMVMatrix 와 uPMatrix라는 두개의 uniform 변수가 있다.
+	uniform 변수는 쉐이더 외부에서 액세스 할 수 있기 때문에 유용함!
+	특히 program 이 있는 곳과 관계가 있다.
+	initShaders에서 location 을 꺼내는데 다음을 보이는 model-view와 projection matrix를 설정하는 부분.
+
+
+	이 과정 이후에 모든 버텍스에 대해 쉐이더가 호출됨. 그리고 버텍스는 drawScene 내부 vertexPositionAttribute를 통해 애트리뷰트와 버퍼를 연관지어져 쉐이더에 VertexPosition 으로 전달됩니다.
+
+	vertex shader 의 main 함수 내부의 작은 코드는 버텍스에 model-view matrix 와 projection matrix 를 곱한 결과를 최종 버텍스 좌표로 출력하는 것.
+
+	이렇기 때문에 webglstart는 initShaders 를 부르고 그안에 getShader를 사용해 fragment 와 vertex shader를 페이지 내의 스크립트로 부터 추출해 컴파일하고 webgl 로 전달하여 3d 화면을 그릴때 사용하는 것입니다.
+-->
+</head>
+<body onload = "webGLStart();">
+	<canvas id = "lesson03-canvas" style="border:none;" width="500" height="500">
+		본 브라우저는 canvas 태그를 지원하지 않습니다.
+	</canvas>
+</body>
+</html>

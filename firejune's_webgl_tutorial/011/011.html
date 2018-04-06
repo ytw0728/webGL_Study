@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title></title>
+
+<script type="text/javascript" src="glMatrix-0.9.5.min.js"></script>
+<script type="text/javascript" src="webgl-utils.js"></script>
+
+<script id= "shader-fs" type="x-shader/x-fragment">
+	precision mediump float;
+
+	varying vec2 vTextureCoord;
+	varying vec3 vLightWeighting;
+
+	uniform sampler2D uSampler;
+
+	void main(void){
+		vec4 textureColor = texture2D(uSampler, vec2(vTextureCoord.s, vTextureCoord.t));
+		gl_FragColor = vec4(textureColor.rgb * vLightWeighting ,textureColor.a);
+	}
+
+</script>
+<script id = "shader-vs" type= "x-shader/x-vertex">
+
+	attribute vec3 aVertexPosition;
+	attribute vec3 aVertexNormal;
+	attribute vec2 aTextureCoord;
+
+	uniform mat4 uMVMatrix;
+	uniform mat4 uPMatrix;
+	uniform mat3 uNMatrix;
+
+	uniform vec3 uAmbientColor;
+
+	uniform vec3 uLightingDirection;
+	uniform vec3 uDirectionalColor;
+	
+	uniform bool uUseLighting;
+
+	varying vec2 vTextureCoord;
+	varying vec3 vLightWeighting;
+
+	void main(void){
+		gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+		vTextureCoord = aTextureCoord;
+
+		if(!uUseLighting){
+			vLightWeighting = vec3(1.0, 1.0, 1.0);
+		}
+		else{
+			vec3 transformedNormal = uNMatrix * aVertexNormal;
+			float directionalLightWeighting = max(dot(transformedNormal, uLightingDirection), 0.0);
+			vLightWeighting = uAmbientColor + uDirectionalColor * directionalLightWeighting;
+		}
+	}
+
+</script>
+<script>
+	var gl;
+ 	function getWebGLContext( canvas = null){
+		var webGLContext;
+		var names = ["webgl", "experimental-webgl", "webkit-3d", "moz-webgl"];
+		for (var i = 0; i < names.length; i++) 
+		{
+			try{
+				webGLContext = canvas.getContext(names[i] );
+
+			}catch(e){			}
+			if (webGLContext){
+				console.log(names[i]);
+				break;
+			}
+		}
+		if(!webGLContext){
+			console.log("Could not initialise WebGL.");
+		}
+
+		webGLContext.viewportWidth = canvas.width;
+		webGLContext.viewportHeight = canvas.height;
+		return webGLContext;
+ 	 }
+
+ 	 function getShader(gl, id){
+		var shaderScript = document.getElementById(id);
+		if(!shaderScript){
+			return null;
+		}
+
+		var str = "";
+		var k = shaderScript.firstChild;
+		while(k){
+			if(k.nodeType == 3){
+				str += k.textContent;
+			}
+			k = k.nextSibling;
+
+		}
+
+		var shader;
+		if( shaderScript.type == "x-shader/x-fragment" ){
+			shader = gl.createShader(gl.FRAGMENT_SHADER);
+		}else if( shaderScript.type == "x-shader/x-vertex" ){
+			shader = gl.createShader(gl.VERTEX_SHADER);
+		}else{
+			return null;
+		}
+
+		gl.shaderSource(shader, str);
+		gl.compileShader(shader);
+
+		if( !gl.getShaderParameter(shader, gl.COMPILE_STATUS) ){
+			console.log( gl.getShaderInfoLog(shader) );
+			return null;
+		}
+
+		return shader;
+	}
+
+	// shader 코드의 내용을 추출해 fragment와 vertex 타입에 따라 webgl 이 그래픽 카드에서 작동하게 컴파일을 걸어놓고 있는것.
+
+
+	var shaderProgram;
+	function initShaders(){
+		var fragmentShader = getShader(gl, "shader-fs");
+		var vertexShader = getShader(gl, "shader-vs");
+
+		shaderProgram = gl.createProgram();
+		gl.attachShader( shaderProgram, vertexShader);
+		gl.attachShader( shaderProgram, fragmentShader);
+		gl.linkProgram( shaderProgram);
+
+		if( !gl.getProgramParameter( shaderProgram, gl.LINK_STATUS )){
+			console.log("Could not initialise shaders");
+		}
+
+		gl.useProgram( shaderProgram);
+
+		shaderProgram.vertexPositionAttribute = gl.getAttribLocation(shaderProgram, "aVertexPosition");
+		gl.enableVertexAttribArray(shaderProgram.vertexPositionAttribute);
+
+
+		shaderProgram.vertexNormalAttribute = gl.getAttribLocation(shaderProgram, "aVertexNormal");
+		gl.enableVertexAttribArray(shaderProgram.vertexNormalAttribute);
+
+		/* 쉐이더로 애트리뷰트값을 전달하고 가져오기 위해 애트리뷰트의 위치를 검색하는것*/ 
+
+        shaderProgram.textureCoordAttribute = gl.getAttribLocation(shaderProgram, "aTextureCoord");
+        gl.enableVertexAttribArray(shaderProgram.textureCoordAttribute);
+
+		shaderProgram.pMatrixUniform = gl.getUniformLocation( shaderProgram, "uPMatrix");
+		shaderProgram.mvMatrixUniform = gl.getUniformLocation( shaderProgram, "uMVMatrix");
+		shaderProgram.nMatrixUniform = gl.getUniformLocation( shaderProgram, "uNMatrix");
+		shaderProgram.samplerUniform = gl.getUniformLocation( shaderProgram, "uSampler");
+		shaderProgram.useLightingUniform = gl.getUniformLocation( shaderProgram, "uUseLighting");
+		shaderProgram.ambientColorUniform = gl.getUniformLocation( shaderProgram, "uAmbientColor");
+		shaderProgram.lightingDirectionUniform = gl.getUniformLocation(shaderProgram, "uLightingDirection");
+		shaderProgram.directionalColorUniform = gl.getUniformLocation(shaderProgram, "uDirectionalColor");
+	}
+
+	function handleLoadedTexture(texture){
+		gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+
+
+		gl.bindTexture(gl.TEXTURE_2D, texture);
+		gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, texture.image);
+		gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+		gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST);
+
+
+		gl.generateMipmap(gl.TEXTURE_2D);
+
+		gl.bindTexture(gl.TEXTURE_2D, null);
+	}
+
+	var crateTexture;
+
+	function initTexture(){
+		crateTexture = gl.createTexture();
+		crateTexture.image = new Image();
+		crateTexture.image.onload = function(){
+			handleLoadedTexture(crateTexture);
+		}
+		crateTexture.image.src = "crate.gif";
+	}
+
+	
+ 	
+	var mvMatrix = mat4.create();
+	var mvMatrixStack = [];
+	var pMatrix = mat4.create();
+	// model-view matrix를 유지하기위한 mvMatrix 라는 변수를 정의함.
+	// mat4.create 에 의해 만들어진 매트릭스는 0 으로 비어있는 행렬.
+
+	// mat4.perspective 함수는 projection matrix 를 수행함. 인수로 지정된 투시법을 적용하기에 필요한 특수 매트릭스를 반환하는 함수이다.
+
+	function mvPushMatrix(){
+		var copy = mat4.create();
+		mat4.set(mvMatrix, copy);
+		mvMatrixStack.push(copy);
+	}
+
+	function mvPopMatrix(){
+		if(mvMatrixStack.length == 0){
+			throw "Invalid popMatrix!";
+		}
+		mvMatrix = mvMatrixStack.pop();
+	}
+
+
+	function setMatrixUniforms(){
+		gl.uniformMatrix4fv( shaderProgram.pMatrixUniform, false, pMatrix
+		);
+		gl.uniformMatrix4fv( 
+			shaderProgram.mvMatrixUniform, 
+			false, mvMatrix
+		);
+
+		var normalMatrix = mat3.create();
+		mat4.toInverseMat3(mvMatrix, normalMatrix);
+		mat3.transpose(normalMatrix);
+		gl.uniformMatrix3fv(shaderProgram.nMatrixUniform, false, normalMatrix);
+
+	}
+
+	// initShader 함수에서 얻은 projection matrix 와 model-view matrix를 나타내는 uniform 변수에 대한 참조를 사용하여 WebGL에 자바스크립트 형식의 매트릭스를 전달합니다.
+
+
+	function degToRad(degrees){
+		return degrees * Math.PI / 180;
+	}
+
+	var currentlyPressedKeys = {};
+
+	function handleKeyDown(event){
+		var keycode = event.keycode || event.which;
+		currentlyPressedKeys[keycode] = true;
+	}
+
+	function handleKeyUp(event){
+		var keycode = event.keycode || event.which;
+		currentlyPressedKeys[keycode] = false;
+	}
+
+	var pageup = 33;
+	var pagedown = 34; 
+	var left = 37;
+	var up = 38;
+	var right = 39;
+	var down = 40;
+	function handleKeys(){
+		if(currentlyPressedKeys[pagedown]) z -= 0.05;
+		if(currentlyPressedKeys[pageup]) z += 0.05;
+		if(currentlyPressedKeys[left]) ySpeed -= 1;
+		if(currentlyPressedKeys[right]) ySpeed += 1
+		if(currentlyPressedKeys[up]) xSpeed -= 1;
+		if(currentlyPressedKeys[down]) xSpeed += 1;
+	}
+
+	
+
+	var moonVertexPositionBuffer;
+	var moonVertexNormalBuffer;
+	var moonVertexTextureCoordBuffer;
+	var moonVertexIndexBuffer;
+	function initBuffers() {
+        var latitudeBands = 30;
+        var longitudeBands = 30;
+        var radius = 2;
+
+        var vertexPositionData = [];
+        var normalData = [];
+        var textureCoordData = [];
+
+        for( var latNumber = 0; latNumber <= latitudeBands; longNumber++){
+        	var theta = latNumber * Math.PI / latitudeBands;
+        	var sinTheta = Math.sin(theta);
+        	var cosTheta = Math.cos(theta);
+
+        	for( var longNumber = 0; longNumber <= longitudeBands; longNumber++){
+        		var phi = longNumber * 2 * Math.PI / longitudeBands;
+        		var sinPhi = Math.sin(phi);
+        		var cosPhi = Math.cos(phi);
+
+        		var x = cosPhi * sinTheta;
+        		var y = cosTheta;
+        		var z = sinPhi * sinTheta;
+        		var u = 1 - (longNumber / longitudeBands);
+        		var v = 1 - (latNumber / latitudeBands);
+
+
+        		normalData.push(x);
+        		normalData.push(y);
+        		normalData.push(z);
+
+        		textureCoordData.push(u);
+        		textureCoordData.push(v);
+
+        		vertexPositionData.push(radius * x);
+        		vertexPositionData.push(radius * y);
+        		vertexPositionData.push(radius * z);
+
+        	}
+        }
+
+        
+    }
+
+
+
+
+    var xRot = 0;
+    var xSpeed = 3;
+
+    var yRot = 0;
+    var ySpeed = -3;
+
+    var z = -5.0;
+
+	function drawScene() {
+		gl.viewport(0,0, gl.viewportWidth, gl.viewportHeight );
+		gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+		mat4.perspective(45, gl.viewportWidth/ gl.viewportHeight, 0.1, 100.0, pMatrix );
+
+
+	    var lighting = document.getElementById("lighting").checked;
+	    gl.uniform1i(shaderProgram.useLightingUniform, lighting);
+	    if(lighting){
+	    	gl.uniform3f(
+	    		shaderProgram.ambientColorUniform,
+	    		parseFloat(document.getElementById("ambientR").value),
+	    		parseFloat(document.getElementById("ambientG").value),
+	    		parseFloat(document.getElementById("ambientB").value)
+	    	);
+
+		    var lightingDirection = [
+		    	parseFloat(document.getElementById("lightDirectionX").value),
+		    	parseFloat(document.getElementById("lightDirectionY").value),
+		    	parseFloat(document.getElementById("lightDirectionZ").value)
+		    ];
+		    var adjustedLD = vec3.create();
+		    vec3.normalize(lightingDirection, adjustedLD);
+		    vec3.scale(adjustedLD, -1);
+		    gl.uniform3fv(shaderProgram.lightingDirectionUniform, adjustedLD);
+
+		    gl.uniform3f(
+		    	shaderProgram.directionalColorUniform,
+		    	parseFloat(document.getElementById("directionalR").value),
+		    	parseFloat(document.getElementById("directionalG").value),
+		    	parseFloat(document.getElementById("directionalB").value)
+		    );
+
+		}
+
+
+		mat4.identity( mvMatrix );
+		mat4.translate( mvMatrix, [0, 0, -6] );
+		mat4.multiply( mvMatrix, moonRotationMatrix );
+
+		gl.activeTexture(gl.TEXTURE0);
+		gl.bindTexture(gl.TEXTURE_2D, moonTexture);
+		gl.uniform1i(shaderProgram.samplerUniform, 0);
+
+		gl.bindBuffer(gl.ARRAY_BUFFER, moonVertexPositionBuffer);
+		gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, moonVertexPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
+
+		gl.bindBuffer(gl.ARRAY_BUFFER, moonVertexTextureCoordBuffer);
+		gl.vertexAttribPointer(shaderProgram.textureCoordAttribute, moonVertexTextureCoordBuffer.itemSize, gl.FLOAT, false, 0, 0);
+
+		gl.bindBuffer(gl.ARRAY_BUFFER, moonVertexNormalBuffer);
+		gl.vertexAttribPointer(shaderProgram.vertexNormalAttribute, moonVertexNormalBuffer.itemSize, gl.FLOAT, false, 0, 0);
+
+		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, moonVertexIndexBuffer);
+
+
+		setMatrixUniforms();
+		gl.drawElements(gl.TRIANGLES, moonVertexIndexBuffer.numItems, gl.UNSIGNED_SHORT, 0);
+    }
+
+
+	var lastTime = 0;
+
+	function animate( key ){
+		var timeNow = new Date().getTime();
+		
+		if(lastTime != 0 ){
+			var elapsed = timeNow - lastTime;
+
+			xRot += ( xSpeed * elapsed )/ 1000.0;
+			yRot += ( ySpeed * elapsed )/ 1000.0;
+		}
+		lastTime = timeNow;
+	}
+
+
+	function tick(){
+		requestAnimFrame(tick);
+		drawScene();
+	}
+
+	var canvas;
+	function webGLStart(){
+		canvas = document.getElementById("lesson11-canvas");
+		
+		gl = getWebGLContext( canvas );
+		console.log(gl);
+		initShaders();
+		initBuffers();
+		initTexture();
+
+		gl.clearColor(0.0 , 0.0 , 0.0 , 0.1);
+		gl.enable(gl.DEPTH_TEST);
+
+		canvas.onmousedown = handleMouseDown;
+		document.onmouseup = handleMouseUp;
+		document.onmousemove = hamdleMouseMove;
+
+		tick();
+	}
+
+
+
+	
+	
+
+
+
+
+</script>
+
+
+
+</head>
+<body onload = "webGLStart();">
+	<canvas id = "lesson11-canvas" style="border:none;" width="500" height="500">
+		본 브라우저는 canvas 태그를 지원하지 않습니다.
+	</canvas>
+	<br />
+    <input type="checkbox" id="lighting" checked /> Use lighting<br/>
+    (Use cursor keys to spin the box and <code>Page Up</code>/<code>Page Down</code> to zoom out/in)
+
+    <br/>
+    <h2>Directional light:</h2>
+
+    <table style="border: 0; padding: 10px;">
+        <tr>
+            <td><b>Direction:</b>
+            <td>X: <input type="text" id="lightDirectionX" value="-0.25" />
+            <td>Y: <input type="text" id="lightDirectionY" value="-0.25" />
+            <td>Z: <input type="text" id="lightDirectionZ" value="-1.0" />
+        </tr>
+        <tr>
+            <td><b>Colour:</b>
+            <td>R: <input type="text" id="directionalR" value="0.8" />
+            <td>G: <input type="text" id="directionalG" value="0.8" />
+            <td>B: <input type="text" id="directionalB" value="0.8" />
+        </tr>
+    </table>
+
+    <h2>Ambient light:</h2>
+    <table style="border: 0; padding: 10px;">
+        <tr>
+            <td><b>Colour:</b>
+            <td>R: <input type="text" id="ambientR" value="0.2" />
+            <td>G: <input type="text" id="ambientG" value="0.2" />
+            <td>B: <input type="text" id="ambientB" value="0.2" />
+        </tr>
+    </table>
+</body>
+</html>

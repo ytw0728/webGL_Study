@@ -1,0 +1,26 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<style>
+	html,body{
+		width: 100%;
+		height: 100%;
+		margin:0;
+		padding:0;
+	}
+    #mycanvas{
+    	border:1px solid blue;
+    }
+</style>
+</head>
+<body>
+
+  <canvas id = "mycanvas" width = "300" height = "300"></canvas>
+
+
+<script>
+	var canvas = document.getElementById("mycanvas");
+	var gl = canvas.getContext('webgl',{antialias:false, stencil:true});
+</script>
+</body>
+</html>

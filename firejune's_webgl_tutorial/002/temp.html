@@ -1,0 +1,151 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<!-- fragment shader 에는 직접 액세스해 값을 전달할 수 없다. 
+그러므로 vertex shader 에 미리 값을 전달하고 그 값을 varying 변수에 저장시켜 fragment shader 로 전달해 이용하는 방법을 쓰자.-->
+<script type= "x-shader/x-vertex">
+
+	attribute vec3 aVertexPosition;
+	attribute vec4 aVertexColor;
+
+	uniform mat4 uMVMatrix;
+	uniform mat4 uPMatrix;
+
+	varying vec4 vColor;
+
+	void main(void){
+		gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition , 1.0);
+		vColor= aVertexColor;
+	}
+
+	/*
+		aVertexPosition , aVertexColor - 애트리뷰트 ( 각각 위치참조값, 색상참조값 )
+		uMVMatrix , uPMatrix - non-varying uniform 변수 
+		vColor - varying 변수 
+
+		쉐이더 본체에서 gl_Position을 레슨 1에서 처럼 계산한다.
+		( gl_Position 은 모든 vertex shader 에서 암시적으로 varying 형태로써 정의되어 있다. )
+		그리고 색상과 관련된 입력 애트리뷰트 - aVertexColor 를 출력할 varying 변수로 전달한다.
+
+
+
+	*/
+</script>
+
+<script type="x-shader/x-fragment">
+	precision highp float;
+
+	varying vec4 vColor;
+
+	void main(void){
+		gl_FragColor = vColor;
+	}
+</script>
+
+<script type="text/javascript">
+	/* 부동 소수점 정밀 사용구 뒤에 선형 보간 결과로 혼합되어 나온 색상을 포함해 입력 varying 변수인 vColor 을 받고 즉시 이부분의 색상으로 반환한다.*/
+
+	var shaderProgram;
+	function initShaders(){
+		var fragmentShader = getShader(gl, "shader-fs");
+		var vertexShader = getShader(gl, "shader-vs");
+
+		shaderProgram = gl.createProgram();
+		gl.attachShader( shaderProgram, vertexShader);
+		gl.attachShader( shaderProgram, fragmentShader);
+		gl.linkProgram( shaderProgram);
+
+		if( !gl.getProgramParameter( shaderProgram, gl.LINK_STATUS )){
+			console.log("Could not initialise shaders");
+		}
+
+		gl.useProgram( shaderProgram);
+
+		shaderProgram.vertexPositionAttribute = gl.getAttribLocation(shaderProgram, "aVertexPosition");
+		gl.enableVertexAttribArray(shaderProrgam.vertexPositionAttribute);
+
+		shaderProgram.vertecColorAttribute = gl.getAttribLocation( shaderProgram , "aVertecColor");
+		gl.enableVertexAttribArray( shaderProgram.vertexColorAttribute);
+
+		shaderProgram.pMatrixUniform = gl.getUniformLocation( shaderProgram, "uPMatrix");
+		shaderProgram.mvMatrixUniform = gl.getUniformLocation( shaderProgram, "uMVMatrix");
+		/* 쉐이더로 애트리뷰트값을 전달하고 가져오기 위해 애트리뷰트의 위치를 검색하는것*/ 
+	}
+
+	// 색상 및 위치좌표 버퍼 
+	var triangleVertexPositionBuffer;
+	var triangleVertexColorBuffer;
+	var squareVertexPositionBuffer;
+	var squareVertexColorBuffer;
+
+	function initBuffers(){
+		triangleVertexPositionBuffer = gl.createBuffer();
+		gl.bindBuffer(gl.ARRAY_BUFFER , triangleVertexPositionBuffer );
+		var vertices = [
+			 0.0,  1.0, 0.0,
+			-1.0, -1.0, 0.0,
+			 1.0, -1.0, 0.0
+		];
+		gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+		triangleVertexPositionBuffer.itemSize = 3;
+		triangleVertexPositionBuffer.numItems = 3;
+
+
+		triangleVertexColorBuffer = gl.createBuffer();
+		gl.bindBuffer(gl.ARRAY_BUFFER, triangleVertexColorBuffer );
+		var colors = [
+			1.0, 0.0, 0.0, 1.0,
+			0.0, 1.0, 0.0, 1.0,
+			0.0, 0.0, 1.0, 1.0
+		];
+
+		gl.bufferData( gl.ARRAY_BUFFER, new Float32Array( colors), gl.STATIC_DRAW );
+		triangleVertexColorBuffer.itemSize = 4;
+		triangleVertexColorBuffer.numItems = 3;
+	}
+
+	function drawScene(){
+		gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
+		gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT );
+
+		mat4.identity(mvMatrix);
+
+		mat4.translate(mvMatrix , [-1.5, 0.0, -7.0]);
+		gl.bindBuffer( gl.ARRAY_BUFFER, triangleVertexPositionBuffer);
+		gl.vertexAttribPointer( shaderProgram.vertexPositionAttribute, triangleVertexPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
+
+		gl.bindBuffer( gl.ARRAY_BUFFER, triangleVertexColorBuffer);
+		gl.vertexAttribPointer( shaderProgram.vertexColorAttribute, triangleVertexColorBuffer.itemSize, gl.FLOAT, false, 0, 0);
+
+		setMatrixUniforms();
+		gl.drawArrays(gl.TRIANGLES, 0, triangleVertexPositionBuffer.numItems);
+
+
+
+
+
+		mat4.translate(mvMatrix, [3.0, 0.0, 0.0]);
+		gl.bindBuffer(gl.ARRAY_BUFFER, squareVertexPositionBuffer);
+		gl.vertexAttribPointer( shaderProgram.vertexPositionAttribute, squareVertexPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
+
+		gl.bindBuffer( gl.ARRAY_BUFFER, squareVertexColorBuffer);
+		gl.vertexAttribPointer( shaderProgram.vertexColorAttribute, squareVertexColorBuffer.itemSize, gl.FLOAT, false, 0, 0);
+
+		setMatrixUniforms();
+		gl.drawArrays(gl.TRIANGLE_STRIP, 0, squareVertexPositionBuffer.numItems);
+
+
+
+
+	}
+
+
+
+</script>
+</head>
+<body>
+
+
+</body>
+</html>
